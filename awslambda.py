@@ -15,8 +15,10 @@ import sublime_plugin
 import requests
 import subprocess
 import tempfile
+import os
 from io import BytesIO
 from zipfile import ZipFile
+from pprint import pprint  # noqa
 
 
 class AWSClient():
@@ -55,6 +57,14 @@ class LambdaClient(AWSClient):
             return self._lambda_client
         setattr(self, '_lambda_client', self.get_aws_client('lambda'))
         return self._lambda_client
+
+    def download_function(self, function):
+        """Download source to a function and open it in a new window."""
+        arn = function['FunctionArn']
+        func_code_res = self._lambda_client.get_function(FunctionName=arn)
+        url = func_code_res['Code']['Location']
+        temp_dir_path = self.extract_zip_url(url)
+        self.open_lambda_package_in_new_window(temp_dir_path, function)
 
     def extract_zip_url(self, file_url):
         """Fetch a zip file and decompress it.
@@ -113,7 +123,7 @@ class LambdaClient(AWSClient):
         v = self.window.create_output_panel("lambda_info_{}".format(function['FunctionName']))
         v.run_command("display_lambda_function_info", function)
 
-    def open_in_new_window(self, paths=[]):
+    def open_in_new_window(self, paths=[], cmd=None):
         """Open paths in a new sublime window."""
         # from wbond https://github.com/titoBouzout/SideBarEnhancements/blob/st3/SideBar.py#L1916
         items = []
@@ -123,10 +133,43 @@ class LambdaClient(AWSClient):
         if sublime.platform() == 'osx':
             app_path = executable_path[:executable_path.rfind(".app/") + 5]
             executable_path = app_path + "Contents/SharedSupport/bin/subl"
-
         items.append(executable_path)
+        if cmd:
+            items.extend(['--command', cmd])
         items.extend(paths)
         subprocess.Popen(items)
+
+    def lambda_info_path(self, package_path):
+        """Return path to the lambda info file for a downloaded package."""
+        return os.path.join(package_path, ".sublime-lambda-info")
+
+    def open_lambda_package_in_new_window(self, package_path, function):
+        """Spawn a new sublime window to edit an unzipped lambda package."""
+        # add a file to the directory to pass in our function info
+        lambda_info_path = self.lambda_info_path(package_path)
+
+        with open(lambda_info_path, 'w') as f:
+            f.write(str(function))
+        self.open_in_new_window(paths=[package_path], cmd="prepare_lambda_window")
+
+
+class PrepareLambdaWindowCommand(LambdaClient, sublime_plugin.WindowCommand):
+    """Called when a lambda package has been downloaded and extracted and opened in a new window."""
+
+    def run(self):
+        """Mark this project as being tied to a lambda function."""
+        win = sublime.active_window()
+        proj_data = win.project_data()
+        # proj_data['lambda_function'] = url
+        win.set_project_data(proj_data)
+
+
+class LambdaSaveHookListener(LambdaClient, sublime_plugin.EventListener):
+    """Listener for events pertaining to editing lambdas."""
+
+    def on_post_save_async(self, view):
+        """Sync modified lambda source."""
+        # view.set_status("lambda_post_save", "lambda-saved")
 
 
 class ListFunctionsCommand(LambdaClient, sublime_plugin.WindowCommand):
@@ -136,7 +179,7 @@ class ListFunctionsCommand(LambdaClient, sublime_plugin.WindowCommand):
         """Display choices in a quick panel."""
         self.select_function(self.display_function_info)
 
-    # def selected(self, function): 
+    # def selected(self, function):
     #     self.window.run_command(self.)
 
 
@@ -145,6 +188,7 @@ class DisplayLambdaFunctionInfoCommand(LambdaClient, sublime_plugin.TextCommand)
 
     def run(self, edit, function):
         """Ok."""
+        self.download_function(function)
 
 
 class TestLambdaEditCommand(LambdaClient, sublime_plugin.WindowCommand):
@@ -152,6 +196,3 @@ class TestLambdaEditCommand(LambdaClient, sublime_plugin.WindowCommand):
 
     def run(self):
         """Grab zip from test URL."""
-        url = ''
-        temp_dir_path = self.extract_zip_url(url)
-        self.open_in_new_window(paths=[temp_dir_path])
