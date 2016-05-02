@@ -1,0 +1,13 @@
+[
+    {
+        "id" : "awslambda",
+        "caption" : "λ",
+        "children":
+        [
+            {
+                "caption" : "List Functions",
+                "command" : "list_functions"
+            }
+        ]
+    }
+]
