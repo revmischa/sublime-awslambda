@@ -1,0 +1,15 @@
+{
+    "schema_version": "3.0.0",
+"packages": [
+{
+            "name": "AWS Lambda",
+            "details": "https://github.com/revmischa/sublime-awslambda",
+            "releases": [
+                {
+                    "sublime_text": "*",
+                    "tags": true
+                }
+            ]
+        }
+    ]
+}
