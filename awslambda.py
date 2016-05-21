@@ -16,9 +16,12 @@ import requests
 import subprocess
 import tempfile
 import os
+import json
 from io import BytesIO
 from zipfile import ZipFile
 from pprint import pprint  # noqa
+
+INFO_FILE_NAME = ".sublime-lambda-info"
 
 
 class AWSClient():
@@ -85,7 +88,7 @@ class LambdaClient(AWSClient):
         response_iterator = paginator.paginate()
         self.functions = []
         for page in response_iterator:
-            print(page['Functions'])
+            # print(page['Functions'])
             for func in page['Functions']:
                 self.functions.append(func)
         sublime.status_message("Lambda functions fetched.")
@@ -121,8 +124,6 @@ class LambdaClient(AWSClient):
         if not isinstance(self, sublime_plugin.WindowCommand):
             raise Exception("display_function_info must be called on a WindowCommand")
         v = self.window.create_output_panel("lambda_info_{}".format(function['FunctionName']))
-        print("running")
-        print(function)
         v.run_command("display_lambda_function_info", {'function': function})
 
     def open_in_new_window(self, paths=[], cmd=None):
@@ -143,7 +144,7 @@ class LambdaClient(AWSClient):
 
     def lambda_info_path(self, package_path):
         """Return path to the lambda info file for a downloaded package."""
-        return os.path.join(package_path, ".sublime-lambda-info")
+        return os.path.join(package_path, INFO_FILE_NAME)
 
     def open_lambda_package_in_new_window(self, package_path, function):
         """Spawn a new sublime window to edit an unzipped lambda package."""
@@ -151,7 +152,7 @@ class LambdaClient(AWSClient):
         lambda_info_path = self.lambda_info_path(package_path)
 
         with open(lambda_info_path, 'w') as f:
-            f.write(str(function))
+            f.write(json.dumps(function))
         self.open_in_new_window(paths=[package_path], cmd="prepare_lambda_window")
 
 
@@ -161,8 +162,15 @@ class PrepareLambdaWindowCommand(sublime_plugin.WindowCommand, LambdaClient):
     def run(self):
         """Mark this project as being tied to a lambda function."""
         win = sublime.active_window()
+        lambda_file_name = os.path.join(win.folders()[0], INFO_FILE_NAME)
+        lambda_file = open(lambda_file_name, 'r')
+        func_info_s = lambda_file.read()
+        lambda_file.close()
+        if not func_info_s:
+            print("Failed to read lambda file info")
+        func_info = json.loads(func_info_s)
         proj_data = win.project_data()
-        # proj_data['lambda_function'] = url
+        proj_data['lambda_function'] = func_info
         win.set_project_data(proj_data)
 
 
@@ -171,7 +179,13 @@ class LambdaSaveHookListener(sublime_plugin.EventListener, LambdaClient):
 
     def on_post_save_async(self, view):
         """Sync modified lambda source."""
-        # view.set_status("lambda_post_save", "lambda-saved")
+        proj_data = view.window().project_data()
+        if 'lambda_function' not in proj_data:
+            return
+        # okay we're saving a lambda project! let's sync it back up!
+        func = proj_data['lambda_function']
+        print(func)
+        view.set_status("lambda_post_save", "lambda-saved")
 
 
 class ListFunctionsCommand(sublime_plugin.WindowCommand, LambdaClient):
