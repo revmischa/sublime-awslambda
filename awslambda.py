@@ -11,7 +11,7 @@ Required IAM roles:
 
 import sublime
 import sublime_plugin
-# import boto3
+import boto3
 import requests
 import subprocess
 import tempfile
@@ -61,7 +61,7 @@ class LambdaClient(AWSClient):
     def download_function(self, function):
         """Download source to a function and open it in a new window."""
         arn = function['FunctionArn']
-        func_code_res = self._lambda_client.get_function(FunctionName=arn)
+        func_code_res = self.client.get_function(FunctionName=arn)
         url = func_code_res['Code']['Location']
         temp_dir_path = self.extract_zip_url(url)
         self.open_lambda_package_in_new_window(temp_dir_path, function)
@@ -106,7 +106,7 @@ class LambdaClient(AWSClient):
                 "Size: {}".format(func['CodeSize']),
             ])
 
-        def selected_cb(self, selected_index):
+        def selected_cb(selected_index):
             if selected_index == -1:
                 # cancelled
                 return
@@ -114,14 +114,16 @@ class LambdaClient(AWSClient):
             if not function:
                 sublime.error_message("Unknown function selected.")
             callback(function)
-        self.window.show_quick_panel(self.functions, self.function_selected)
+        self.window.show_quick_panel(func_list, selected_cb)
 
     def display_function_info(self, function):
         """Create an output panel with the function details."""
-        if self is not sublime_plugin.WindowCommand:
+        if not isinstance(self, sublime_plugin.WindowCommand):
             raise Exception("display_function_info must be called on a WindowCommand")
         v = self.window.create_output_panel("lambda_info_{}".format(function['FunctionName']))
-        v.run_command("display_lambda_function_info", function)
+        print("running")
+        print(function)
+        v.run_command("display_lambda_function_info", {'function': function})
 
     def open_in_new_window(self, paths=[], cmd=None):
         """Open paths in a new sublime window."""
@@ -153,7 +155,7 @@ class LambdaClient(AWSClient):
         self.open_in_new_window(paths=[package_path], cmd="prepare_lambda_window")
 
 
-class PrepareLambdaWindowCommand(LambdaClient, sublime_plugin.WindowCommand):
+class PrepareLambdaWindowCommand(sublime_plugin.WindowCommand, LambdaClient):
     """Called when a lambda package has been downloaded and extracted and opened in a new window."""
 
     def run(self):
@@ -164,7 +166,7 @@ class PrepareLambdaWindowCommand(LambdaClient, sublime_plugin.WindowCommand):
         win.set_project_data(proj_data)
 
 
-class LambdaSaveHookListener(LambdaClient, sublime_plugin.EventListener):
+class LambdaSaveHookListener(sublime_plugin.EventListener, LambdaClient):
     """Listener for events pertaining to editing lambdas."""
 
     def on_post_save_async(self, view):
@@ -172,7 +174,7 @@ class LambdaSaveHookListener(LambdaClient, sublime_plugin.EventListener):
         # view.set_status("lambda_post_save", "lambda-saved")
 
 
-class ListFunctionsCommand(LambdaClient, sublime_plugin.WindowCommand):
+class ListFunctionsCommand(sublime_plugin.WindowCommand, LambdaClient):
     """Fetch functions."""
 
     def run(self):
@@ -183,15 +185,15 @@ class ListFunctionsCommand(LambdaClient, sublime_plugin.WindowCommand):
     #     self.window.run_command(self.)
 
 
-class DisplayLambdaFunctionInfoCommand(LambdaClient, sublime_plugin.TextCommand):
+class DisplayLambdaFunctionInfoCommand(sublime_plugin.TextCommand, LambdaClient):
     """Insert info about a function into the current file."""
 
-    def run(self, edit, function):
+    def run(self, edit, function=None):
         """Ok."""
         self.download_function(function)
 
 
-class TestLambdaEditCommand(LambdaClient, sublime_plugin.WindowCommand):
+class TestLambdaEditCommand(sublime_plugin.WindowCommand, LambdaClient):
     """Test editing a lambda."""
 
     def run(self):
