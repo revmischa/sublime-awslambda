@@ -151,6 +151,7 @@ class LambdaClient(AWSClient):
         # add a file to the directory to pass in our function info
         lambda_info_path = self.lambda_info_path(package_path)
 
+        function['sublime_temp_path'] = package_path
         with open(lambda_info_path, 'w') as f:
             f.write(json.dumps(function))
         self.open_in_new_window(paths=[package_path], cmd="prepare_lambda_window")
@@ -161,8 +162,11 @@ class PrepareLambdaWindowCommand(sublime_plugin.WindowCommand, LambdaClient):
 
     def run(self):
         """Mark this project as being tied to a lambda function."""
-        win = sublime.active_window()
+        win = self.window
         lambda_file_name = os.path.join(win.folders()[0], INFO_FILE_NAME)
+        if not os.path.isfile(lambda_file_name):
+            print(lambda_file_name + " does not exist")
+            return
         lambda_file = open(lambda_file_name, 'r')
         func_info_s = lambda_file.read()
         lambda_file.close()
@@ -172,6 +176,11 @@ class PrepareLambdaWindowCommand(sublime_plugin.WindowCommand, LambdaClient):
         proj_data = win.project_data()
         proj_data['lambda_function'] = func_info
         win.set_project_data(proj_data)
+
+        # open default func file if it exists
+        default_function_file = os.path.join(win.folders()[0], 'lambda_function.py')
+        if os.path.isfile(default_function_file):
+            win.open_file(default_function_file)
 
 
 class LambdaSaveHookListener(sublime_plugin.EventListener, LambdaClient):
@@ -185,6 +194,10 @@ class LambdaSaveHookListener(sublime_plugin.EventListener, LambdaClient):
         # okay we're saving a lambda project! let's sync it back up!
         func = proj_data['lambda_function']
         print(func)
+        sublime_temp_path = func['sublime_temp_path']
+        if not sublime_temp_path or not os.path.isdir(sublime_temp_path):
+            print("error: failed to find temp lambda dir")
+        print(sublime_temp_path)
         view.set_status("lambda_post_save", "lambda-saved")
 
 
