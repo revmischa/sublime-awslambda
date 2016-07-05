@@ -1,4 +1,6 @@
 Sublime Text 3 plugin for editing AWS Lambda function sources easily.
 
 ## Demo
-<iframe width="420" height="315" src="https://www.youtube.com/embed/v0HOn66tS2U" frameborder="0" allowfullscreen></iframe>
+<a href="http://www.youtube.com/watch?feature=player_embedded&v=v0HOn66tS2U
+" target="_blank"><img src="http://img.youtube.com/vi/v0HOn66tS2U/0.jpg" 
+alt="Demo Video" width="240" height="180" border="10" /></a>
