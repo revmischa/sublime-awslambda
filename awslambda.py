@@ -23,7 +23,7 @@ import io
 from pprint import pprint  # noqa
 
 INFO_FILE_NAME = ".sublime-lambda-info"
-AWS_PROFILE_NAME = 'mish'  # specify a boto profile (for testing)
+AWS_PROFILE_NAME = None  # specify a boto configuration profile to use (for testing)
 
 
 class AWSClient():
@@ -39,6 +39,7 @@ class AWSClient():
         """Custom AWS low-level session."""
         if hasattr(self, '_aws_session'):
             return getattr(self, '_aws_session')
+        # waiting on: https://github.com/boto/boto3/issues/704#issuecomment-231459948
         session = boto3.session.Session(profile_name=AWS_PROFILE_NAME)
         setattr(self, '_aws_session', session)
         return session
