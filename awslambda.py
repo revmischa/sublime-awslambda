@@ -60,14 +60,22 @@ class LambdaClient(AWSClient):
         super()
         self.functions = []
 
+    def _clear_client(self):
+        if hasattr(self, '_aws_session'):
+            delattr(self, '_aws_session')
+        if hasattr(self, '_lambda_client'):
+            delattr(self, '_lambda_client')
+
     @property
     def client(self):
         """Return AWS Lambda boto3 client."""
         if not self.test_aws_credentials_exist():
+            self._clear_client()
             sublime.error_message(
-                "AWS credentials not found. " +
-                "Follow the instructions at " +
+                "AWS credentials not found.\n" +
+                "Please follow the instructions at\n" +
                 "https://pypi.python.org/pypi/boto3/")
+            raise Exception("AWS credentials needed")
         if hasattr(self, '_lambda_client'):
             return self._lambda_client
         setattr(self, '_lambda_client', self.get_aws_client('lambda'))
