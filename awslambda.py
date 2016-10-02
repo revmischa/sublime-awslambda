@@ -40,6 +40,7 @@ class AWSClient():
         if hasattr(self, '_aws_session'):
             return getattr(self, '_aws_session')
         # waiting on: https://github.com/boto/boto3/issues/704#issuecomment-231459948
+        # yay done
         session = boto3.session.Session(profile_name=AWS_PROFILE_NAME)
         setattr(self, '_aws_session', session)
         return session
@@ -287,7 +288,7 @@ class LambdaSaveHookListener(sublime_plugin.EventListener, LambdaClient):
     def on_post_save_async(self, view):
         """Sync modified lambda source."""
         proj_data = view.window().project_data()
-        if 'lambda_function' not in proj_data:
+        if not proj_data or 'lambda_function' not in proj_data:
             return
         # okay we're saving a lambda project! let's sync it back up!
         func = proj_data['lambda_function']
