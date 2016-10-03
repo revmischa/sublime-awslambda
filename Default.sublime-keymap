@@ -1,3 +1,4 @@
 [
-    { "keys": ["super+shift+o"], "command": "list_functions" }
+    { "keys": ["super+shift+o"], "command": "select_edit_function" },
+    { "keys": ["super+option+i"], "command": "invoke_function" }
 ]

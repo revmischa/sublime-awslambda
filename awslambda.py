@@ -20,10 +20,11 @@ import json
 import re
 import zipfile
 import io
-from pprint import pprint  # noqa
+import pprint
+from base64 import b64decode
 
 INFO_FILE_NAME = ".sublime-lambda-info"
-AWS_PROFILE_NAME = None  # specify a boto configuration profile to use (for testing)
+AWS_PROFILE_NAME = "mish"  # specify a boto configuration profile to use (for testing)
 
 
 class AWSClient():
@@ -218,8 +219,18 @@ class LambdaClient(AWSClient):
         """Create an output panel with the function details."""
         if not isinstance(self, sublime_plugin.WindowCommand):
             raise Exception("display_function_info must be called on a WindowCommand")
-        v = self.window.create_output_panel("lambda_info_{}".format(function['FunctionName']))
-        v.run_command("display_lambda_function_info", {'function': function})
+        # v = self.window.create_output_panel("lambda_info_{}".format(function['FunctionName']))
+        nv = self.window.new_file()
+        nv.view.set_scratch(True)
+        nv.run_command("display_function_info", {'function': function})
+
+    def edit_function(self, function):
+        """Edit a function's source."""
+        if not isinstance(self, sublime_plugin.WindowCommand):
+            raise Exception("edit_function must be called on a WindowCommand")
+        nv = self.window.create_output_panel("lambda_info_{}".format(function['FunctionName']))
+        nv.view.set_scratch(True)
+        nv.run_command("edit_function", {'function': function})
 
     def open_in_new_window(self, paths=[], cmd=None):
         """Open paths in a new sublime window."""
@@ -250,6 +261,52 @@ class LambdaClient(AWSClient):
         with open(lambda_info_path, 'w') as f:
             f.write(json.dumps(function))
         self.open_in_new_window(paths=[package_path], cmd="prepare_lambda_window")
+
+    def invoke_function(self, func):
+        """Invoke a lambda function.
+
+        :returns: return_object, log_output, error
+        """
+        payload = {'sublime': True}
+        res = self.client.invoke(
+            FunctionName=func['FunctionName'],
+            InvocationType='RequestResponse',  # synchronous
+            LogType='Tail',  # give us last 4kb output in x-amz-log-result
+            Payload=json.dumps(payload),
+        )
+        # if res['FunctionError']:
+        #     self.display_error("Failed to invoke function: " + res['FunctionError'])
+        #     return
+
+        # return value from the lambda
+        res_payload = res['Payload']
+        if res_payload:
+            res_payload = res_payload.read()
+        # output
+        res_log = res['LogResult']
+        if res_log:
+            res_log = b64decode(res_log).decode('utf-8')
+        return res_payload, res_log, res['FunctionError']
+
+    def invoke_function_test(self, function_name):
+        """Ignore for now."""
+        self.invoke_function()
+
+    def get_window_function(self, window):
+        """Try to see if there is a function associated with this window.
+
+        :returns: function info dict.
+        """
+        proj_data = window.project_data()
+        if not proj_data or 'lambda_function' not in proj_data:
+            return
+        func = proj_data['lambda_function']
+        return func
+
+    def get_view_function(self, view):
+        """Try to see if there is a function associated with this view."""
+        win = view.window()
+        return self.get_window_function(win)
 
     def display_error(self, err):
         """Pop up an error message to the user."""
@@ -287,31 +344,89 @@ class LambdaSaveHookListener(sublime_plugin.EventListener, LambdaClient):
 
     def on_post_save_async(self, view):
         """Sync modified lambda source."""
-        proj_data = view.window().project_data()
-        if not proj_data or 'lambda_function' not in proj_data:
+        func = self.get_view_function(view)
+        if not func:
             return
         # okay we're saving a lambda project! let's sync it back up!
-        func = proj_data['lambda_function']
         self.upload_code(view, func)
 
 
-class ListFunctionsCommand(sublime_plugin.WindowCommand, LambdaClient):
+class SelectEditFunctionCommand(sublime_plugin.WindowCommand, LambdaClient):
     """Fetch functions."""
+
+    def run(self):
+        """Display choices in a quick panel."""
+        self.select_function(self.download_function)
+
+
+class SelectGetFunctionInfoCommand(sublime_plugin.WindowCommand, LambdaClient):
+    """Display some handy info about a function."""
 
     def run(self):
         """Display choices in a quick panel."""
         self.select_function(self.display_function_info)
 
-    # def selected(self, function):
-    #     self.window.run_command(self.)
+
+class InvokeFunctionCommand(sublime_plugin.WindowCommand, LambdaClient):
+    """Invoke current function."""
+
+    def run(self):
+        """Display choices in a quick panel."""
+        window = self.window
+        func = self.get_window_function(window)
+        if not func:
+            self.display_error("No function is associated with this window.")
+            return
+        result, result_log, error_status = self.invoke_function(func)
+        # display output
+        nv = self.window.new_file()
+        nv.set_scratch(True)
+        fargs = dict(
+            function=func,
+            result=result.decode("utf-8"),
+            result_log=result_log,
+            error_status=error_status
+        )
+        nv.run_command("display_invocation_result", fargs)
+
+    def is_enabled(self):
+        """Enable or disable option, depending on if the current window is associated with a function."""
+        func = self.get_window_function(self.window)
+        if not func:
+            return False
+        return True
 
 
-class DisplayLambdaFunctionInfoCommand(sublime_plugin.TextCommand, LambdaClient):
-    """Insert info about a function into the current file."""
+class EditFunctionInfoCommand(sublime_plugin.TextCommand, LambdaClient):
+    """Open editor for source of a function."""
 
     def run(self, edit, function=None):
         """Ok."""
         self.download_function(function)
+
+
+class DisplayFunctionInfoCommand(sublime_plugin.TextCommand, LambdaClient):
+    """Insert info about a function into the current view."""
+
+    def run(self, edit, function=None):
+        """Ok."""
+        pp = pprint.PrettyPrinter(indent=4)
+        self.view.insert(edit, self.view.text_point(0, 0), pp.pformat(function))
+
+
+class DisplayInvocationResultCommand(sublime_plugin.TextCommand, LambdaClient):
+    """Display a function's results in this view."""
+
+    def run(self, edit, function=None, result=None, result_log=None, error_status=None):
+        """Ok."""
+        out = """Function: {funcname}
+
+Error handled status: {err}
+
+Log output: {log}
+
+Result: {res}""".format(funcname=function['FunctionName'], res=result, log=result_log, err=error_status)
+        self.view.insert(edit, self.view.text_point(0, 0), out)
 
 
 class TestLambdaEditCommand(sublime_plugin.WindowCommand, LambdaClient):

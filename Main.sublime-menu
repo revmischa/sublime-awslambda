@@ -5,9 +5,17 @@
         "children":
         [
             {
-                "caption" : "List Functions",
-                "command" : "list_functions"
-            }
+                "caption" : "Edit Function",
+                "command" : "select_edit_function"
+            },
+            {
+                "caption" : "Invoke Function",
+                "command" : "invoke_function"
+            },
+            {
+                "caption" : "Function Info",
+                "command" : "select_get_function_info"
+            }            
         ]
     }
 ]
