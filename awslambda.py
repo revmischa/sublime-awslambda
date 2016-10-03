@@ -24,7 +24,7 @@ import pprint
 from base64 import b64decode
 
 INFO_FILE_NAME = ".sublime-lambda-info"
-AWS_PROFILE_NAME = "mish"  # specify a boto configuration profile to use (for testing)
+AWS_PROFILE_NAME = None  # specify a boto configuration profile to use (for testing)
 
 
 class AWSClient():
