@@ -22,6 +22,7 @@ import re
 import zipfile
 import io
 import pprint
+from contextlib import contextmanager
 from base64 import b64decode
 
 INFO_FILE_NAME = ".sublime-lambda-info"
@@ -32,6 +33,17 @@ DEBUG = False
 def _dbg(*msgs):
     if DEBUG:
         print(msgs)
+
+
+@contextmanager
+def cd(newdir):
+    """Change to a directory, change back when context exits."""
+    prevdir = os.getcwd()
+    os.chdir(os.path.expanduser(newdir))
+    try:
+        yield
+    finally:
+        os.chdir(prevdir)
 
 
 class AWSClient():
@@ -119,7 +131,7 @@ class LambdaClient(AWSClient):
                 "https://pypi.python.org/pypi/boto3/")
             raise Exception("AWS credentials needed")
         if '_lambda_client' in globals():
-            print("_lambda_client_exists")
+            _dbg("_lambda_client_exists")
             return globals()['_lambda_client']
         client = self.get_aws_client('lambda')
         globals()['_lambda_client'] = client
@@ -163,11 +175,12 @@ class LambdaClient(AWSClient):
         :returns: hash of filename to contents.
         """
         url = requests.get(file_url)
-        zip = zipfile.ZipFile(io.BytesIO(url.content))
-        # extract to temporary directory
-        temp_dir_path = tempfile.mkdtemp()
-        print('created temporary directory', temp_dir_path)
-        zip.extractall(path=temp_dir_path)
+        with zipfile.ZipFile(io.BytesIO(url.content)) as zip:
+            # extract to temporary directory
+            temp_dir_path = tempfile.mkdtemp()
+            print('created temporary directory', temp_dir_path)
+            with cd(temp_dir_path):
+                zip.extractall()  # to cwd
         return temp_dir_path
 
     def zip_dir(self, dir_path):
