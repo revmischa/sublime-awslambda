@@ -362,7 +362,10 @@ class LambdaClient(AWSClient):
         res_log = res['LogResult']
         if res_log:
             res_log = b64decode(res_log).decode('utf-8')
-        return res_payload, res_log, res['FunctionError']
+        err = None
+        if 'FunctionError' in res:
+            err = res['FunctionError']
+        return res_payload, res_log, err
 
     def invoke_function_test(self, function_name):
         """Ignore for now."""
@@ -495,13 +498,14 @@ class DisplayInvocationResultCommand(sublime_plugin.TextCommand, LambdaClient):
 
     def run(self, edit, function=None, result=None, result_log=None, error_status=None):
         """Ok."""
+        err = ""
+        if error_status:
+            err = "\nError handled status: {}\n".format(error_status)
         out = """Function: {funcname}
-
-Error handled status: {err}
-
+{err}
 Log output: {log}
 
-Result: {res}""".format(funcname=function['FunctionName'], res=result, log=result_log, err=error_status)
+Result: {res}""".format(funcname=function['FunctionName'], res=result, log=result_log, err=err)
         self.view.insert(edit, self.view.text_point(0, 0), out)
 
 
