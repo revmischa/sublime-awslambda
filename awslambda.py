@@ -12,6 +12,7 @@ Required IAM roles:
 import sublime
 import sublime_plugin
 import boto3
+import botocore
 import requests
 import subprocess
 import tempfile
@@ -24,7 +25,13 @@ import pprint
 from base64 import b64decode
 
 INFO_FILE_NAME = ".sublime-lambda-info"
-AWS_PROFILE_NAME = None  # specify a boto configuration profile to use (for testing)
+SETTINGS_PATH = "awslambda"
+DEBUG = False
+
+
+def _dbg(*msgs):
+    if DEBUG:
+        print(msgs)
 
 
 class AWSClient():
@@ -33,25 +40,55 @@ class AWSClient():
     def get_aws_client(self, client_name):
         """Return a boto3 client with our session."""
         session = self.get_aws_session()
-        client = session.client(client_name)
+        client = None
+        try:
+            client = session.client(client_name)
+        except botocore.exceptions.NoRegionError:
+            sublime.error_message("A region must be specified in your configuration.")
         return client
 
     def get_aws_session(self):
         """Custom AWS low-level session."""
-        if hasattr(self, '_aws_session'):
-            return getattr(self, '_aws_session')
-        # waiting on: https://github.com/boto/boto3/issues/704#issuecomment-231459948
-        # yay done
-        session = boto3.session.Session(profile_name=AWS_PROFILE_NAME)
-        setattr(self, '_aws_session', session)
+        if '_aws_session' in globals():
+            _dbg("_aws_session exists")
+            return globals()['_aws_session']
+        # load profile from settings
+        profile_name = self.get_profile_name()
+        if profile_name not in self.get_available_profiles():
+            # this profile name appears to not exist
+            _dbg("Got bogus AWS profile name {}, resetting...".format(profile_name))
+            profile_name = None
+        session = boto3.session.Session(profile_name=profile_name)
+        globals()['_aws_session'] = session
         return session
+
+    def get_available_profiles(self):
+        """Return different configuration profiles available for AWS.
+
+        c.f. https://github.com/boto/boto3/issues/704#issuecomment-231459948
+        """
+        sess = boto3.session.Session(profile_name=None)
+        if not sess:
+            return []
+        if not hasattr(sess, 'available_profiles'):
+            # old boto :/
+            return sess._session.available_profiles
+        return sess.available_profiles()
+
+    def get_profile_name(self):
+        """Get selected profile name."""
+        return self._settings().get("profile_name")
 
     def test_aws_credentials_exist(self):
         """Check if AWS credentials are available."""
-        session = self.get_aws_session()
+        session = boto3.session.Session()
         if session.get_credentials():
             return True
         return False
+
+    def _settings(self):
+        """Get settings for this plugin."""
+        return sublime.load_settings(SETTINGS_PATH)
 
 
 class LambdaClient(AWSClient):
@@ -63,10 +100,13 @@ class LambdaClient(AWSClient):
         self.functions = []
 
     def _clear_client(self):
-        if hasattr(self, '_aws_session'):
-            delattr(self, '_aws_session')
-        if hasattr(self, '_lambda_client'):
-            delattr(self, '_lambda_client')
+        _dbg("Clearing client")
+        if '_aws_session' in globals():
+            del globals()['_aws_session']
+            _dbg("deleted _aws_session")
+        if '_lambda_client' in globals():
+            del globals()['_lambda_client']
+            _dbg("deleted _lambda_client")
 
     @property
     def client(self):
@@ -78,19 +118,36 @@ class LambdaClient(AWSClient):
                 "Please follow the instructions at\n" +
                 "https://pypi.python.org/pypi/boto3/")
             raise Exception("AWS credentials needed")
-        if hasattr(self, '_lambda_client'):
-            return self._lambda_client
-        setattr(self, '_lambda_client', self.get_aws_client('lambda'))
-        return self._lambda_client
+        if '_lambda_client' in globals():
+            print("_lambda_client_exists")
+            return globals()['_lambda_client']
+        client = self.get_aws_client('lambda')
+        globals()['_lambda_client'] = client
+        return client
 
-    def select_boto_profile(self):
+    def select_aws_profile(self, window):
         """Select a profile to use for our AWS session.
 
         Multiple profiles (access keys) can be defined in AWS credential configuration.
         """
-        # TODO: implement this when boto3 has a way to actually list available profiles.
-        # Currently, it does not.
-        pass
+        profiles = self.get_available_profiles()
+        if len(profiles) <= 1:
+            # no point in going any further eh
+            return
+
+        def profile_selected_cb(selected_index):
+            if selected_index == -1:
+                # cancelled
+                return
+            profile = profiles[selected_index]
+            if not profile:
+                return
+            # save in settings
+            self._settings().set("profile_name", profile)
+            # clear the current session
+            self._clear_client()
+            window.status_message("Using AWS profile {}".format(profile))
+        window.show_quick_panel(profiles, profile_selected_cb)
 
     def download_function(self, function):
         """Download source to a function and open it in a new window."""
@@ -180,10 +237,16 @@ class LambdaClient(AWSClient):
             sublime.status_message("Fetching lambda functions...")
         response_iterator = paginator.paginate()
         self.functions = []
-        for page in response_iterator:
-            # print(page['Functions'])
-            for func in page['Functions']:
-                self.functions.append(func)
+        try:
+            for page in response_iterator:
+                # print(page['Functions'])
+                for func in page['Functions']:
+                    self.functions.append(func)
+        except botocore.exceptions.ClientError as cerr:
+            # display error fetching functions
+            if not quiet:
+                sublime.error_message(cerr.response['Error']['Message'])
+            raise cerr
         if not quiet:
             sublime.status_message("Lambda functions fetched.")
 
@@ -371,7 +434,7 @@ class InvokeFunctionCommand(sublime_plugin.WindowCommand, LambdaClient):
     """Invoke current function."""
 
     def run(self):
-        """Display choices in a quick panel."""
+        """Display function invocation result in a new file."""
         window = self.window
         func = self.get_window_function(window)
         if not func:
@@ -434,3 +497,18 @@ class TestLambdaEditCommand(sublime_plugin.WindowCommand, LambdaClient):
 
     def run(self):
         """Grab zip from test URL."""
+
+
+class SelectProfileCommand(sublime_plugin.WindowCommand, LambdaClient):
+    """Invoke current function."""
+
+    def run(self):
+        """Display choices in a quick panel."""
+        self.select_aws_profile(self.window)
+
+    def is_enabled(self):
+        """Must have multiple profiles to select one."""
+        profiles = self.get_available_profiles()
+        if len(profiles) > 1:
+            return True
+        return False

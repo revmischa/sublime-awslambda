@@ -5,15 +5,19 @@
         "children":
         [
             {
-                "caption" : "Edit Function",
+                "caption" : "Select Profile...",
+                "command" : "select_profile"
+            },
+            {
+                "caption" : "Edit Function...",
                 "command" : "select_edit_function"
             },
             {
-                "caption" : "Invoke Function",
+                "caption" : "Invoke Function...",
                 "command" : "invoke_function"
             },
             {
-                "caption" : "Function Info",
+                "caption" : "Function Info...",
                 "command" : "select_get_function_info"
             }            
         ]
