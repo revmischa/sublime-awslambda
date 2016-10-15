@@ -500,7 +500,7 @@ class TestLambdaEditCommand(sublime_plugin.WindowCommand, LambdaClient):
 
 
 class SelectProfileCommand(sublime_plugin.WindowCommand, LambdaClient):
-    """Invoke current function."""
+    """Select an AWS configuration profile to use and save in settings."""
 
     def run(self):
         """Display choices in a quick panel."""
