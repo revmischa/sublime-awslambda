@@ -501,7 +501,7 @@ class DisplayInvocationResultCommand(sublime_plugin.TextCommand, LambdaClient):
         err = ""
         if error_status:
             err = "\nError handled status: {}\n".format(error_status)
-        out = """Function: {funcname}
+        out = """{funcname} Results
 {err}
 Log output: {log}
 
