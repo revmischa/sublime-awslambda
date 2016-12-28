@@ -130,7 +130,7 @@ class LambdaClient(AWSClient):
                 "Please follow the instructions at\n" +
                 "https://pypi.python.org/pypi/boto3/")
             raise Exception("AWS credentials needed")
-        if '_lambda_client' in globals():
+        if '_lambda_client' in globals() and globals()['_lambda_client']:
             _dbg("_lambda_client_exists")
             return globals()['_lambda_client']
         client = self.get_aws_client('lambda')
