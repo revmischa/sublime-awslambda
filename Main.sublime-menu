@@ -19,6 +19,10 @@
             {
                 "caption" : "Function Info...",
                 "command" : "select_get_function_info"
+            },
+            {
+                "caption" : "Install Dependency...",
+                "command" : "install_dependency"
             }            
         ]
     }

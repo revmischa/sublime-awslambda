@@ -476,6 +476,61 @@ class InvokeFunctionCommand(sublime_plugin.WindowCommand, LambdaClient):
         return True
 
 
+class InstallDependencyCommand(sublime_plugin.WindowCommand, LambdaClient):
+    """Install a package via pip."""
+
+    def run(self):
+        """Call out to system to install packages via pip."""
+        window = self.window
+        func = self.get_window_function(window)
+        if not func:
+            self.display_error("No lambda function is associated with this window.")
+            return
+        self.window.show_input_panel("PyPI Packages To Install:", '', lambda s: self._install_packages(func, s), None, None)
+
+    def _install_packages(self, func, packages):
+        if not packages:
+            print("No packages selected to isntall")
+            return
+
+        cmd = """set -x \
+        rm -f pip.log; \
+        pip install --target pip/ --no-compile --log pip.log $LAMBDA_PACKAGES_TO_INSTALL \
+            && rm -rf pip/*.dist-info pip/tests \
+            && mv pip/* $PWD/ \
+            && rm -rf pip
+        """
+        cwd = func['sublime_temp_path']
+        packages = "requests"
+        env = dict(LAMBDA_PACKAGES_TO_INSTALL=packages)
+        output = "<no output>"
+        with subprocess.Popen(cmd,
+                              executable="/bin/bash",
+                              shell=True,
+                              env=env,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT,
+                              universal_newlines=True,
+                              cwd=cwd) as proc:
+            output = proc.stdout.read()
+            print(output)
+        # if all went well there should be a pip log
+        pip_log_path = os.path.join(cwd, "pip.log")
+        if not os.path.isfile(pip_log_path):
+            self.display_error("Failed to install {}\n{}".format(packages, output))
+            return
+        # display result
+        pip_logs = ""
+        with open(pip_log_path, 'r') as logfile:
+            pip_logs = logfile.read()
+        os.unlink(pip_log_path)
+        if pip_logs:
+            nv = self.window.new_file()
+            nv.set_scratch(True)
+            nv.set_name("Pip output")
+            nv.run_command("display_string", dict(str=pip_logs))
+
+
 class EditFunctionInfoCommand(sublime_plugin.TextCommand, LambdaClient):
     """Open editor for source of a function."""
 
@@ -493,6 +548,14 @@ class DisplayFunctionInfoCommand(sublime_plugin.TextCommand, LambdaClient):
         self.view.insert(edit, self.view.text_point(0, 0), pp.pformat(function))
 
 
+class DisplayStringCommand(sublime_plugin.TextCommand, LambdaClient):
+    """Just display a new view with a string inside."""
+
+    def run(self, edit, str=None):
+        """Display str."""
+        self.view.insert(edit, self.view.text_point(0, 0), str)
+
+
 class DisplayInvocationResultCommand(sublime_plugin.TextCommand, LambdaClient):
     """Display a function's results in this view."""
 
@@ -507,13 +570,6 @@ Log output: {log}
 
 Result: {res}""".format(funcname=function['FunctionName'], res=result, log=result_log, err=err)
         self.view.insert(edit, self.view.text_point(0, 0), out)
-
-
-class TestLambdaEditCommand(sublime_plugin.WindowCommand, LambdaClient):
-    """Test editing a lambda."""
-
-    def run(self):
-        """Grab zip from test URL."""
 
 
 class SelectProfileCommand(sublime_plugin.WindowCommand, LambdaClient):
