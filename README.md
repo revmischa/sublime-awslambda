@@ -1,5 +1,11 @@
 Sublime Text 3 plugin for editing AWS Lambda function sources easily.
 
+## Features:
+* Supports multiple API key profiles
+* Automatically zips and uploads new function code on buffer save
+* Can easily fetch and install PyPI package dependencies
+* Invoke function directly from inside Sublime and view all output
+
 # Setup
 To use this plugin you will need to configure AWS with your access key ID and secret.
 
