@@ -498,7 +498,7 @@ class InstallDependencyCommand(sublime_plugin.WindowCommand, LambdaClient):
         pip install --target pip/ --no-compile --log pip.log $LAMBDA_PACKAGES_TO_INSTALL \
             && rm -rf pip/*.dist-info pip/tests \
             && mv pip/* $PWD/ \
-            && rm -rf pip
+            ; rm -rf pip
         """
         cwd = func['sublime_temp_path']
         env = dict(LAMBDA_PACKAGES_TO_INSTALL=packages)
@@ -513,6 +513,8 @@ class InstallDependencyCommand(sublime_plugin.WindowCommand, LambdaClient):
                               cwd=cwd) as proc:
             output = proc.stdout.read()
             print(output)
+        # refresh file list
+        self.window.run_command("refresh_folder_list")
         # if all went well there should be a pip log
         pip_log_path = os.path.join(cwd, "pip.log")
         if not os.path.isfile(pip_log_path):
