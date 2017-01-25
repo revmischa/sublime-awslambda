@@ -501,7 +501,6 @@ class InstallDependencyCommand(sublime_plugin.WindowCommand, LambdaClient):
             && rm -rf pip
         """
         cwd = func['sublime_temp_path']
-        packages = "requests"
         env = dict(LAMBDA_PACKAGES_TO_INSTALL=packages)
         output = "<no output>"
         with subprocess.Popen(cmd,
