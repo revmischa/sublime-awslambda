@@ -191,8 +191,6 @@ class LambdaClient(AWSClient):
         # files to skip
         skip_re = re.compile("\.pyc$")  # no compiled python files pls
         for root, dirs, files in os.walk(dir_path):
-            # add dir itself (needed for empty dirs
-            zip.write(os.path.join(root, "."))
             # add files
             for file in files:
                 file_path = os.path.join(root, file)
